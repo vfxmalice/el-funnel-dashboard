@@ -309,7 +309,7 @@ function evalCustomMetric(cm,row){const v=evalCustom(cm.tokens,row);return(v!=nu
 // Simple ratio detection: tokens form exactly [metric, /, metric]
 // Used to compute period/rolling value as sum(num)/sum(den) instead of avg of daily ratios
 function ratioKeys(cm){const t=cm.tokens;if(t.length===3&&t[0].type==="metric"&&t[1].type==="op"&&t[1].value==="/"&&t[2].type==="metric")return{num:t[0].key,den:t[2].key};return null;}
-function customPeriodValue(cm,rows){const rk=ratioKeys(cm);if(rk){let n=0,d=0;rows.forEach(r=>{const nv=r[rk.num],dv=r[rk.den];if(nv!=null&&dv!=null){n+=nv;d+=dv;}});if(d===0)return null;const ratio=n/d;return cm.unit==="%"?ratio*100:ratio;}const vals=rows.map(r=>evalCustomMetric(cm,r)).filter(v=>v!=null);return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null;}
+function customPeriodValue(cm,rows){const rk=ratioKeys(cm);if(rk){let n=0,d=0;rows.forEach(r=>{if(r[rk.num]!=null)n+=r[rk.num];if(r[rk.den]!=null)d+=r[rk.den];});if(d===0)return null;const ratio=n/d;return cm.unit==="%"?ratio*100:ratio;}const vals=rows.map(r=>evalCustomMetric(cm,r)).filter(v=>v!=null);return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null;}
 // For derived ratio metrics, rolling avg must NOT simple-average the values.
 // Two modes:
 //   {num, den, mult} — cost metrics: sum(num)/sum(den)*mult (e.g. CPSS = sum(spend)/sum(calls))
@@ -332,8 +332,8 @@ const DERIVED_METRICS={
 };
 function rollingMean(data,key,before,after){const derived=DERIVED_METRICS[key];return data.map((_,i)=>{let numSum=0,denSum=0,vals=[];for(let j=Math.max(0,i-before);j<=Math.min(data.length-1,i+after);j++){if(data[j]._e)continue;if(derived){if(derived.val){// weighted avg: sum(val*wt)/sum(wt)
 const v=data[j][derived.val],w=data[j][derived.wt];if(v!=null&&w!=null){numSum+=v*w;denSum+=w;}}else{// component sum: sum(num)/sum(den)*mult
-const n=data[j][derived.num],d=data[j][derived.den];if(n!=null&&d!=null){numSum+=n;denSum+=d;}}}else if(key.startsWith("cm_")){const cm=customMetrics.find(c=>"cm_"+c.id===key);if(cm){const rk=ratioKeys(cm);if(rk){// simple ratio — component sum
-const nv=data[j][rk.num],dv=data[j][rk.den];if(nv!=null&&dv!=null){numSum+=nv;denSum+=dv;}}else{const v=evalCustomMetric(cm,data[j]);if(v!=null)vals.push(v);}}}else{const v=data[j][key];if(v!=null)vals.push(v);}}if(derived)return denSum>0?(derived.val?numSum/denSum:(numSum/denSum)*derived.mult):null;// custom ratio: sum(num)/sum(den), apply * 100 if %
+const n=data[j][derived.num],d=data[j][derived.den];if(n!=null&&d!=null){numSum+=n;denSum+=d;}}}else if(key.startsWith("cm_")){const cm=customMetrics.find(c=>"cm_"+c.id===key);if(cm){const rk=ratioKeys(cm);if(rk){// simple ratio — independent component sums
+if(data[j][rk.num]!=null)numSum+=data[j][rk.num];if(data[j][rk.den]!=null)denSum+=data[j][rk.den];}else{const v=evalCustomMetric(cm,data[j]);if(v!=null)vals.push(v);}}}else{const v=data[j][key];if(v!=null)vals.push(v);}}if(derived)return denSum>0?(derived.val?numSum/denSum:(numSum/denSum)*derived.mult):null;// custom ratio: sum(num)/sum(den), apply * 100 if %
 if(key.startsWith("cm_")){const cm=customMetrics.find(c=>"cm_"+c.id===key);if(cm&&ratioKeys(cm))return denSum>0?(cm.unit==="%"?(numSum/denSum)*100:numSum/denSum):null;}return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null;});}
 function normalize(arr){const valid=arr.filter(v=>v!=null);if(!valid.length)return arr.map(()=>null);const mn=Math.min(...valid),mx=Math.max(...valid);if(mx===mn)return arr.map(v=>v!=null?50:null);return arr.map(v=>v!=null?((v-mn)/(mx-mn))*100:null);}
 function getMetricValue(key,row){if(key.startsWith("cm_")){const cm=customMetrics.find(c=>"cm_"+c.id===key);return cm?evalCustomMetric(cm,row):null;}return row[key];}
